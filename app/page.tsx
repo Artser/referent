@@ -1,14 +1,23 @@
 'use client'
 
+'use client'
+
 import { useState } from 'react'
 
 type ActionType = 'summary' | 'theses' | 'telegram' | null
+
+type ParsedArticle = {
+  date: string | null
+  title: string | null
+  content: string | null
+}
 
 export default function Home() {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState('')
   const [activeAction, setActiveAction] = useState<ActionType>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const handleAction = async (action: ActionType) => {
     if (!url.trim()) {
@@ -19,17 +28,40 @@ export default function Home() {
     setLoading(true)
     setActiveAction(action)
     setResult('')
+    setError(null)
 
-    // Имитация запроса к API
-    setTimeout(() => {
-      const mockResults: Record<ActionType, string> = {
-        summary: 'Генерация ответа "О чем статья?"...\n\nСтатья будет обработана и здесь появится краткое описание содержания статьи.',
-        theses: 'Генерация тезисов...\n\nЗдесь будут отображены основные тезисы статьи в структурированном виде.',
-        telegram: 'Генерация поста для Telegram...\n\nЗдесь появится готовый пост для публикации в Telegram-канале.',
+    try {
+      const response = await fetch('/api/parse', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url }),
+      })
+
+      const data = (await response.json()) as ParsedArticle & { error?: string }
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Неизвестная ошибка при парсинге')
       }
-      setResult(mockResults[action] || '')
+
+      const jsonToShow = {
+        date: data.date,
+        title: data.title,
+        content: data.content,
+      }
+
+      setResult(JSON.stringify(jsonToShow, null, 2))
+    } catch (e) {
+      console.error(e)
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Произошла ошибка при обращении к серверу',
+      )
+    } finally {
       setLoading(false)
-    }, 1500)
+    }
   }
 
   return (
@@ -94,18 +126,21 @@ export default function Home() {
         {/* Блок результата */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 min-h-[300px]">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            Результат
+            Результат (JSON)
           </h2>
-          <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+          <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap text-sm font-mono">
             {loading ? (
               <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
               </div>
+            ) : error ? (
+              <p className="text-red-500">{error}</p>
             ) : result ? (
               result
             ) : (
               <p className="text-gray-400 dark:text-gray-500 italic">
-                Введите URL статьи и выберите действие для генерации результата
+                Введите URL статьи, нажмите одну из кнопок — и здесь появится JSON
+                вида {'{ date, title, content }'}.
               </p>
             )}
           </div>
