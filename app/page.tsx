@@ -66,6 +66,57 @@ export default function Home() {
         }
 
         setResult(translateData.translation || 'Перевод не получен')
+      } else if (action === 'summary') {
+        // Для резюме статьи используем AI
+        const summaryResponse = await fetch('/api/summary', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url }),
+        })
+
+        const summaryData = (await summaryResponse.json()) as { summary?: string; error?: string }
+
+        if (!summaryResponse.ok || summaryData.error) {
+          throw new Error(summaryData.error || 'Ошибка при генерации резюме')
+        }
+
+        setResult(summaryData.summary || 'Резюме не получено')
+      } else if (action === 'theses') {
+        // Для тезисов статьи используем AI
+        const thesesResponse = await fetch('/api/theses', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url }),
+        })
+
+        const thesesData = (await thesesResponse.json()) as { theses?: string; error?: string }
+
+        if (!thesesResponse.ok || thesesData.error) {
+          throw new Error(thesesData.error || 'Ошибка при генерации тезисов')
+        }
+
+        setResult(thesesData.theses || 'Тезисы не получены')
+      } else if (action === 'telegram') {
+        // Для поста для Telegram используем AI
+        const telegramResponse = await fetch('/api/telegram', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url }),
+        })
+
+        const telegramData = (await telegramResponse.json()) as { telegramPost?: string; error?: string }
+
+        if (!telegramResponse.ok || telegramData.error) {
+          throw new Error(telegramData.error || 'Ошибка при генерации поста для Telegram')
+        }
+
+        setResult(telegramData.telegramPost || 'Пост не получен')
       } else {
         // Для остальных действий - просто парсинг
         const response = await fetch('/api/parse', {
@@ -175,10 +226,18 @@ export default function Home() {
         {/* Блок результата */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 min-h-[300px]">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            {activeAction === 'translate' ? 'Перевод статьи' : 'Результат (JSON)'}
+            {activeAction === 'translate' 
+              ? 'Перевод статьи' 
+              : activeAction === 'summary'
+              ? 'О чем статья?'
+              : activeAction === 'theses'
+              ? 'Тезисы статьи'
+              : activeAction === 'telegram'
+              ? 'Пост для Telegram'
+              : 'Результат (JSON)'}
           </h2>
           <div className={`text-gray-700 dark:text-gray-300 whitespace-pre-wrap ${
-            activeAction === 'translate' ? 'text-base' : 'text-sm font-mono'
+            activeAction === 'translate' || activeAction === 'summary' || activeAction === 'theses' || activeAction === 'telegram' ? 'text-base' : 'text-sm font-mono'
           }`}>
             {loading ? (
               <div className="flex items-center justify-center h-64">

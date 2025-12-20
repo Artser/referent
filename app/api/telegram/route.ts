@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
 
-type ParsedArticle = {
-  date: string | null
-  title: string | null
-  content: string | null
-}
-
 function extractDate($: cheerio.CheerioAPI): string | null {
   // <time datetime="...">
   const timeTag = $('time[datetime]').first().attr('datetime')
@@ -111,6 +105,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Парсинг статьи
     const response = await fetch(url)
     if (!response.ok) {
       return NextResponse.json(
@@ -122,23 +117,84 @@ export async function POST(req: NextRequest) {
     const html = await response.text()
     const $ = cheerio.load(html)
 
-    const parsed: ParsedArticle = {
-      date: extractDate($),
-      title: extractTitle($),
-      content: extractContent($),
+    const date = extractDate($)
+    const title = extractTitle($)
+    const content = extractContent($)
+
+    if (!content) {
+      return NextResponse.json(
+        { error: 'Не удалось извлечь контент статьи' },
+        { status: 400 }
+      )
     }
 
-    return NextResponse.json(parsed)
+    // Проверка API-ключа
+    const apiKey = process.env.OPENROUTER_API_KEY
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'API-ключ OpenRouter не настроен' },
+        { status: 500 }
+      )
+    }
+
+    // Подготовка промпта для AI
+    let articleText = ''
+    if (title) articleText += `Заголовок: ${title}\n\n`
+    if (date) articleText += `Дата: ${date}\n\n`
+    articleText += `Контент: ${content}\n\n`
+    articleText += `URL источника: ${url}`
+
+    // Отправка запроса в OpenRouter
+    const aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': process.env.OPENROUTER_HTTP_REFERER || '',
+        'X-Title': 'Referent App',
+      },
+      body: JSON.stringify({
+        model: 'deepseek/deepseek-chat',
+        messages: [
+          {
+            role: 'system',
+            content: 'Ты копирайтер для Telegram-канала. Создай пост на русском языке на основе статьи. Пост должен быть интересным, с эмодзи, хэштегами и призывом к действию. Длина: 2-3 абзаца. Используй разметку Markdown. В конце поста обязательно добавь ссылку на источник статьи в формате Markdown: [Источник](URL).',
+          },
+          {
+            role: 'user',
+            content: articleText,
+          },
+        ],
+      }),
+    })
+
+    if (!aiResponse.ok) {
+      const errorData = await aiResponse.text()
+      console.error('OpenRouter API error:', errorData)
+      return NextResponse.json(
+        { error: `Ошибка API OpenRouter: ${aiResponse.status}` },
+        { status: aiResponse.status }
+      )
+    }
+
+    const aiData = await aiResponse.json()
+
+    if (!aiData.choices || !aiData.choices[0] || !aiData.choices[0].message) {
+      return NextResponse.json(
+        { error: 'Неожиданный формат ответа от API' },
+        { status: 500 }
+      )
+    }
+
+    const telegramPost = aiData.choices[0].message.content
+
+    return NextResponse.json({ telegramPost })
   } catch (error) {
-    console.error('Parse error', error)
+    console.error('Telegram post error', error)
     return NextResponse.json(
-      { error: 'Ошибка при парсинге страницы' },
+      { error: 'Ошибка при генерации поста для Telegram' },
       { status: 500 }
     )
   }
 }
-
-
-
-
 
