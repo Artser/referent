@@ -100,16 +100,35 @@ export async function POST(req: NextRequest) {
 
     if (!url || typeof url !== 'string') {
       return NextResponse.json(
-        { error: 'Не передан URL' },
+        { error: 'Пожалуйста, укажите URL статьи', errorType: 'validation' },
         { status: 400 }
       )
     }
 
     // Парсинг статьи
-    const response = await fetch(url)
+    let response: Response
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 секунд таймаут
+      response = await fetch(url, { signal: controller.signal })
+      clearTimeout(timeoutId)
+    } catch (fetchError) {
+      console.error('Fetch error', fetchError)
+      if (fetchError instanceof Error && (fetchError.name === 'TimeoutError' || fetchError.name === 'AbortError')) {
+        return NextResponse.json(
+          { error: 'Не удалось загрузить статью по этой ссылке.', errorType: 'fetch_timeout' },
+          { status: 408 }
+        )
+      }
+      return NextResponse.json(
+        { error: 'Не удалось загрузить статью по этой ссылке.', errorType: 'fetch_error' },
+        { status: 502 }
+      )
+    }
+
     if (!response.ok) {
       return NextResponse.json(
-        { error: `Не удалось загрузить страницу (status ${response.status})` },
+        { error: 'Не удалось загрузить статью по этой ссылке.', errorType: 'fetch_failed' },
         { status: 502 }
       )
     }
@@ -123,7 +142,7 @@ export async function POST(req: NextRequest) {
 
     if (!content) {
       return NextResponse.json(
-        { error: 'Не удалось извлечь контент статьи' },
+        { error: 'Не удалось извлечь содержимое статьи. Возможно, страница не является статьей.', errorType: 'content_extraction' },
         { status: 400 }
       )
     }
@@ -132,7 +151,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'API-ключ OpenRouter не настроен' },
+        { error: 'Сервис временно недоступен. Пожалуйста, обратитесь к администратору.', errorType: 'config_error' },
         { status: 500 }
       )
     }
@@ -172,8 +191,8 @@ export async function POST(req: NextRequest) {
       const errorData = await aiResponse.text()
       console.error('OpenRouter API error:', errorData)
       return NextResponse.json(
-        { error: `Ошибка API OpenRouter: ${aiResponse.status}` },
-        { status: aiResponse.status }
+        { error: 'Не удалось сгенерировать пост для Telegram. Попробуйте позже.', errorType: 'ai_error' },
+        { status: 502 }
       )
     }
 
@@ -181,7 +200,7 @@ export async function POST(req: NextRequest) {
 
     if (!aiData.choices || !aiData.choices[0] || !aiData.choices[0].message) {
       return NextResponse.json(
-        { error: 'Неожиданный формат ответа от API' },
+        { error: 'Не удалось обработать ответ от AI. Попробуйте позже.', errorType: 'ai_format_error' },
         { status: 500 }
       )
     }
@@ -192,7 +211,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Telegram post error', error)
     return NextResponse.json(
-      { error: 'Ошибка при генерации поста для Telegram' },
+      { error: 'Произошла ошибка при генерации поста для Telegram. Попробуйте позже.', errorType: 'server_error' },
       { status: 500 }
     )
   }

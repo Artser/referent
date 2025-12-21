@@ -106,15 +106,34 @@ export async function POST(req: NextRequest) {
 
     if (!url || typeof url !== 'string') {
       return NextResponse.json(
-        { error: 'Не передан URL' },
+        { error: 'Пожалуйста, укажите URL статьи', errorType: 'validation' },
         { status: 400 }
       )
     }
 
-    const response = await fetch(url)
+    let response: Response
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 секунд таймаут
+      response = await fetch(url, { signal: controller.signal })
+      clearTimeout(timeoutId)
+    } catch (fetchError) {
+      console.error('Fetch error', fetchError)
+      if (fetchError instanceof Error && (fetchError.name === 'TimeoutError' || fetchError.name === 'AbortError')) {
+        return NextResponse.json(
+          { error: 'Не удалось загрузить статью по этой ссылке.', errorType: 'fetch_timeout' },
+          { status: 408 }
+        )
+      }
+      return NextResponse.json(
+        { error: 'Не удалось загрузить статью по этой ссылке.', errorType: 'fetch_error' },
+        { status: 502 }
+      )
+    }
+
     if (!response.ok) {
       return NextResponse.json(
-        { error: `Не удалось загрузить страницу (status ${response.status})` },
+        { error: 'Не удалось загрузить статью по этой ссылке.', errorType: 'fetch_failed' },
         { status: 502 }
       )
     }
@@ -132,11 +151,12 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Parse error', error)
     return NextResponse.json(
-      { error: 'Ошибка при парсинге страницы' },
+      { error: 'Ошибка при обработке статьи. Попробуйте позже.', errorType: 'server_error' },
       { status: 500 }
     )
   }
 }
+
 
 
 

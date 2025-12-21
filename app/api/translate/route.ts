@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
 
     if (!content || typeof content !== 'string') {
       return NextResponse.json(
-        { error: 'Не передан контент для перевода' },
+        { error: 'Не передан контент для перевода', errorType: 'validation' },
         { status: 400 }
       )
     }
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'API-ключ OpenRouter не настроен' },
+        { error: 'Сервис временно недоступен. Пожалуйста, обратитесь к администратору.', errorType: 'config_error' },
         { status: 500 }
       )
     }
@@ -46,8 +46,8 @@ export async function POST(req: NextRequest) {
       const errorData = await response.text()
       console.error('OpenRouter API error:', errorData)
       return NextResponse.json(
-        { error: `Ошибка API OpenRouter: ${response.status}` },
-        { status: response.status }
+        { error: 'Не удалось выполнить перевод. Попробуйте позже.', errorType: 'ai_error' },
+        { status: 502 }
       )
     }
 
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       return NextResponse.json(
-        { error: 'Неожиданный формат ответа от API' },
+        { error: 'Не удалось обработать ответ от AI. Попробуйте позже.', errorType: 'ai_format_error' },
         { status: 500 }
       )
     }
@@ -66,11 +66,12 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Translate error', error)
     return NextResponse.json(
-      { error: 'Ошибка при переводе текста' },
+      { error: 'Произошла ошибка при переводе текста. Попробуйте позже.', errorType: 'server_error' },
       { status: 500 }
     )
   }
 }
+
 
 
 
